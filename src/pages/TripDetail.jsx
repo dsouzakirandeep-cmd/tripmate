@@ -81,32 +81,25 @@ export default function TripDetail({ session }) {
     setShowAiModal(false);
     setAiLoading(true);
     try {
-      const prompt = `Create a detailed day-by-day travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
+      const prompt = `Create a travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
 
-Group preferences:
-- Age groups: ${aiPrefs.ageGroups.length ? aiPrefs.ageGroups.join(', ') : 'Mixed adults'}
-- Travel style: ${aiPrefs.travelStyle}
-- Interests: ${aiPrefs.interests.length ? aiPrefs.interests.join(', ') : 'General sightseeing'}
-- Budget level: ${aiPrefs.budget}
-- Transportation: ${aiPrefs.transport}
-- Special requirements: ${aiPrefs.restrictions || 'None'}
+Group: ${aiPrefs.ageGroups.join(', ') || 'adults'}
+Style: ${aiPrefs.travelStyle}
+Interests: ${aiPrefs.interests.join(', ') || 'general sightseeing'}
+Budget: ${aiPrefs.budget}
+Transport: ${aiPrefs.transport}
+Requirements: ${aiPrefs.restrictions || 'none'}
 
-For each activity please consider and include in notes:
-- Realistic travel time from previous location (considering traffic)
-- Estimated ticket/entry price in USD
-- Recommended time to spend at the location
-- Age-appropriateness notes if relevant
-- Best time of day to visit to avoid crowds
-- Any booking tips or advance reservation requirements
+Rules:
+- Maximum 2 activities per day
+- Keep notes under 80 characters
+- Return ONLY a JSON array, no other text
 
-Return ONLY a JSON array, no other text, no markdown. Each item must have:
-- title (string): activity name
-- event_date (string): YYYY-MM-DD format
-- event_time (string): HH:MM format (24hr)
-- location (string): specific venue/place name with area
-- notes (string): max 100 characters. Format: "Travel: 15min | Cost: $20 | Time needed: 2hrs"
+Each object must have exactly:
+{"title":"string","event_date":"YYYY-MM-DD","event_time":"HH:MM","location":"string","notes":"string"}
 
-Generate 3-4 activities per day with realistic timing gaps for travel and meals. Only return the JSON array.`;
+Example:
+[{"title":"Visit Museum","event_date":"2024-12-20","event_time":"10:00","location":"City Museum, Downtown","notes":"Cost $15 | 2hrs | Book online"}]`;
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -115,32 +108,35 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
           'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
-        },const data = await response.json();
-      const text = data.content[0].text;
-      // Extract JSON array robustly
-      const clean = text.replace(/```json|```/g, '').trim();
-      const startIdx = clean.indexOf('[');
-      const endIdx = clean.lastIndexOf(']');
-      if (startIdx === -1 || endIdx === -1) throw new Error('No JSON array found in response');
-      const jsonStr = clean.slice(startIdx, endIdx + 1);
-      const suggestions = JSON.parse(jsonStr);
+        },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 4000,
+          max_tokens: 3000,
           messages: [{ role: 'user', content: prompt }]
         })
       });
-      
+
+      const data = await response.json();
+      const text = data.content[0].text;
+      const start = text.indexOf('[');
+      const end = text.lastIndexOf(']');
+      if (start === -1 || end === -1) throw new Error('Invalid response from AI');
+      const jsonStr = text.slice(start, end + 1);
+      const cleaned = jsonStr
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+        .replace(/,\s*]/g, ']')
+        .replace(/,\s*}/g, '}');
+      const suggestions = JSON.parse(cleaned);
       const COLORS = ['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD','#D4537E'];
       for (let i = 0; i < suggestions.length; i++) {
         const s = suggestions[i];
         await supabase.from('events').insert([{
           trip_id: id,
-          title: s.title,
+          title: s.title || 'Activity',
           event_date: s.event_date,
-          event_time: s.event_time,
-          location: s.location,
-          notes: s.notes,
+          event_time: s.event_time || '09:00',
+          location: s.location || '',
+          notes: (s.notes || '').slice(0, 200),
           color: COLORS[i % COLORS.length],
           added_by: user.id
         }]);
@@ -148,7 +144,7 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
       fetchAll();
       alert('✅ AI itinerary generated! Check your Plan tab.');
     } catch (err) {
-      alert('Error generating itinerary: ' + err.message);
+      alert('Error: ' + err.message);
     }
     setAiLoading(false);
   }
@@ -211,7 +207,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
 
   const CATS = ['💰','🏨','🚕','🍽️','⛵','🏄','🎟️','🛍️'];
 
-  // Chip selector component
   function ChipGroup({ label, options, field, multi }) {
     return (
       <div style={{marginBottom:'14px'}}>
@@ -262,7 +257,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         ))}
       </div>
 
-      {/* ── PLAN TAB ── */}
       {activeTab === 'plan' && (
         <div style={styles.content}>
           {Object.keys(eventsByDate).sort().map(date => (
@@ -283,32 +277,21 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
               ))}
             </div>
           ))}
-          {events.length === 0 && <div style={styles.emptyState}>No events yet — add one or use AI to generate a smart itinerary!</div>}
+          {events.length === 0 && <div style={styles.emptyState}>No events yet — add one or generate with AI!</div>}
           <button style={styles.addBtn} onClick={() => setShowEventModal(true)}>＋ Add event manually</button>
-
           <div style={styles.aiCard}>
             <div style={styles.aiLabel}>🤖 AI Smart Itinerary Generator</div>
             <div style={styles.aiText}>
               Tell me about your group and I'll create a personalized itinerary for <strong>{trip?.destination}</strong> — with travel times, ticket prices, and age-appropriate activities!
             </div>
-            <button
-              onClick={() => setShowAiModal(true)}
-              disabled={aiLoading}
-              style={{
-                marginTop:'10px', width:'100%', padding:'11px',
-                background: aiLoading ? '#aaa' : 'linear-gradient(135deg,#378ADD,#185FA5)',
-                color:'#fff', border:'none', borderRadius:'10px',
-                fontSize:'14px', fontWeight:'600',
-                cursor: aiLoading ? 'not-allowed' : 'pointer'
-              }}
-            >
+            <button onClick={() => setShowAiModal(true)} disabled={aiLoading}
+              style={{marginTop:'10px',width:'100%',padding:'11px',background:aiLoading?'#aaa':'linear-gradient(135deg,#378ADD,#185FA5)',color:'#fff',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'600',cursor:aiLoading?'not-allowed':'pointer'}}>
               {aiLoading ? '🤖 Generating your itinerary...' : '✨ Customize & Generate Itinerary'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── EXPENSES TAB ── */}
       {activeTab === 'expenses' && (
         <div style={styles.content}>
           <div style={styles.expSummary}>
@@ -334,7 +317,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         </div>
       )}
 
-      {/* ── CHAT TAB ── */}
       {activeTab === 'chat' && (
         <div style={{...styles.chatWrap}}>
           <div style={styles.chatMessages} ref={chatRef}>
@@ -361,7 +343,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         </div>
       )}
 
-      {/* ── MEMBERS TAB ── */}
       {activeTab === 'members' && (
         <div style={styles.content}>
           <div style={styles.memberStats}>
@@ -417,7 +398,7 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         </div>
       )}
 
-      {/* ── AI PREFERENCES MODAL ── */}
+      {/* AI PREFERENCES MODAL */}
       {showAiModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowAiModal(false)}>
           <div style={{...styles.modal, maxHeight:'90vh', overflowY:'auto'}}>
@@ -426,65 +407,55 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
             <div style={{fontSize:'13px', color:'#888', marginBottom:'16px'}}>
               Tell me about your group and I'll create a personalized plan for <strong>{trip?.destination}</strong>
             </div>
-
-            <ChipGroup label="👥 Who's coming? (select all that apply)" field="ageGroups" multi={true} options={[
-              {label:'👶 Toddlers (0-3)', value:'toddlers'},
+            <ChipGroup label="👥 Who's coming?" field="ageGroups" multi={true} options={[
+              {label:'👶 Toddlers', value:'toddlers'},
               {label:'🧒 Kids (4-12)', value:'kids'},
-              {label:'🧑 Teens (13-17)', value:'teens'},
-              {label:'🧑‍💼 Adults (18-59)', value:'adults'},
+              {label:'🧑 Teens', value:'teens'},
+              {label:'🧑‍💼 Adults', value:'adults'},
               {label:'👴 Seniors (60+)', value:'seniors'},
             ]} />
-
             <ChipGroup label="🎯 Travel style" field="travelStyle" multi={false} options={[
-              {label:'😌 Relaxed', value:'relaxed — fewer activities, longer breaks, no rushing'},
-              {label:'⚖️ Balanced', value:'balanced — mix of sightseeing and downtime'},
-              {label:'🚀 Packed', value:'packed — maximize every hour, see as much as possible'},
+              {label:'😌 Relaxed', value:'relaxed'},
+              {label:'⚖️ Balanced', value:'balanced'},
+              {label:'🚀 Packed', value:'packed'},
             ]} />
-
-            <ChipGroup label="❤️ Interests (select all that apply)" field="interests" multi={true} options={[
-              {label:'🏛️ Culture & History', value:'culture and history'},
-              {label:'🍽️ Food & Dining', value:'food and local cuisine'},
-              {label:'🌿 Nature & Outdoors', value:'nature and outdoor activities'},
+            <ChipGroup label="❤️ Interests" field="interests" multi={true} options={[
+              {label:'🏛️ Culture', value:'culture'},
+              {label:'🍽️ Food', value:'food'},
+              {label:'🌿 Nature', value:'nature'},
               {label:'🛍️ Shopping', value:'shopping'},
-              {label:'🎭 Arts & Entertainment', value:'arts and entertainment'},
-              {label:'🏖️ Beach & Water', value:'beach and water activities'},
-              {label:'🎢 Adventure & Thrills', value:'adventure and thrill activities'},
-              {label:'📸 Photography Spots', value:'photography and scenic spots'},
+              {label:'🎭 Arts', value:'arts'},
+              {label:'🏖️ Beach', value:'beach'},
+              {label:'🎢 Adventure', value:'adventure'},
+              {label:'📸 Photography', value:'photography'},
             ]} />
-
-            <ChipGroup label="💰 Budget level" field="budget" multi={false} options={[
-              {label:'💵 Budget', value:'budget-friendly, prioritize free or low-cost activities'},
-              {label:'💳 Moderate', value:'moderate budget, mix of free and paid activities'},
-              {label:'💎 Luxury', value:'luxury, spare no expense for premium experiences'},
+            <ChipGroup label="💰 Budget" field="budget" multi={false} options={[
+              {label:'💵 Budget', value:'budget'},
+              {label:'💳 Moderate', value:'moderate'},
+              {label:'💎 Luxury', value:'luxury'},
             ]} />
-
             <ChipGroup label="🚗 Getting around" field="transport" multi={false} options={[
-              {label:'🚗 Own car', value:'own car — can drive between locations freely'},
-              {label:'🚌 Public transport', value:'public transport — bus, metro, train'},
-              {label:'🚕 Taxi/Uber', value:'taxi and rideshare — convenient but factor in costs'},
-              {label:'🚶 Walking', value:'mostly walking — prefer walkable areas'},
-              {label:'🔀 Mix', value:'mix of transport options'},
+              {label:'🚗 Own car', value:'own car'},
+              {label:'🚌 Public transport', value:'public transport'},
+              {label:'🚕 Taxi/Uber', value:'taxi'},
+              {label:'🚶 Walking', value:'walking'},
+              {label:'🔀 Mix', value:'mixed'},
             ]} />
-
             <div style={{marginBottom:'16px'}}>
-              <div style={styles.label}>⚠️ Any special requirements or restrictions?</div>
+              <div style={styles.label}>⚠️ Special requirements?</div>
               <input style={{...styles.input, marginTop:'6px'}}
-                placeholder="e.g. wheelchair accessible, vegetarian food, avoid crowded places..."
+                placeholder="e.g. wheelchair accessible, vegetarian, avoid crowds..."
                 value={aiPrefs.restrictions}
                 onChange={e => setAiPrefs(p => ({...p, restrictions: e.target.value}))} />
             </div>
-
             <div style={styles.btnRow}>
               <button style={styles.cancelBtn} onClick={() => setShowAiModal(false)}>Cancel</button>
-              <button style={styles.saveBtn} onClick={generateItinerary}>
-                ✨ Generate My Itinerary
-              </button>
+              <button style={styles.saveBtn} onClick={generateItinerary}>✨ Generate</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── ADD EVENT MODAL ── */}
       {showEventModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowEventModal(false)}>
           <div style={styles.modal}>
@@ -505,7 +476,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         </div>
       )}
 
-      {/* ── ADD EXPENSE MODAL ── */}
       {showExpenseModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowExpenseModal(false)}>
           <div style={styles.modal}>
@@ -544,7 +514,6 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
         </div>
       )}
 
-      {/* ── ADD MEMBER MODAL ── */}
       {showMemberModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowMemberModal(false)}>
           <div style={styles.modal}>
