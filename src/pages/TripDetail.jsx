@@ -92,20 +92,28 @@ IMPORTANT: Return ONLY this exact JSON format, nothing else:
 
 Keep each notes field under 50 characters. Return exactly 6 items. No explanation.`;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/.netlify/functions/generate-itinerary', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1500,
-          messages: [{ role: 'user', content: prompt }]
+          destination: trip.destination,
+          start_date: trip.start_date,
+          end_date: trip.end_date,
+          prefs: {
+            ageGroups: aiPrefs.ageGroups.join(', '),
+            travelStyle: aiPrefs.travelStyle,
+            budget: aiPrefs.budget,
+            transport: aiPrefs.transport,
+            restrictions: aiPrefs.restrictions
+          }
         })
       });
+
+      const text = await response.text();
+      const start = text.indexOf('[');
+      const end = text.lastIndexOf(']');
+      if (start === -1 || end === -1) throw new Error('Invalid response from AI');
+      const suggestions = JSON.parse(text.slice(start, end + 1));
 
       const data = await response.json();
       const text = data.content[0].text;
