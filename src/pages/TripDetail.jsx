@@ -101,7 +101,8 @@ export default function TripDetail({ session }) {
   const acceptedMembers = members.filter(m => m.status === 'accepted');
   const totalExp = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
   const perPerson = acceptedMembers.length ? Math.round(totalExp / acceptedMembers.length) : 0;
-  const fmt = n => '₹' + Number(n).toLocaleString('en-IN');
+  const fmt = n => '$' + Number(n).toLocaleString('en-US');
+  
 
   // Group events by date
   const eventsByDate = events.reduce((acc, e) => {
@@ -316,7 +317,7 @@ export default function TripDetail({ session }) {
                 onChange={e => setNewExpense({...newExpense, title: e.target.value})} />
             </div>
             <div style={{marginBottom:'10px'}}>
-              <div style={styles.label}>Amount (₹)</div>
+              <div style={styles.label}>Amount ($)</div>
               <input style={styles.input} type="number" placeholder="0" value={newExpense.amount}
                 onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
             </div>
