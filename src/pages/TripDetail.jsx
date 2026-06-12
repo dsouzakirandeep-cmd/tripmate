@@ -104,7 +104,7 @@ Return ONLY a JSON array, no other text, no markdown. Each item must have:
 - event_date (string): YYYY-MM-DD format
 - event_time (string): HH:MM format (24hr)
 - location (string): specific venue/place name with area
-- notes (string): include travel time, estimated cost, time needed, tips
+- notes (string): max 100 characters. Format: "Travel: 15min | Cost: $20 | Time needed: 2hrs"
 
 Generate 3-4 activities per day with realistic timing gaps for travel and meals. Only return the JSON array.`;
 
@@ -115,17 +115,22 @@ Generate 3-4 activities per day with realistic timing gaps for travel and meals.
           'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY,
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        },const data = await response.json();
+      const text = data.content[0].text;
+      // Extract JSON array robustly
+      const clean = text.replace(/```json|```/g, '').trim();
+      const startIdx = clean.indexOf('[');
+      const endIdx = clean.lastIndexOf(']');
+      if (startIdx === -1 || endIdx === -1) throw new Error('No JSON array found in response');
+      const jsonStr = clean.slice(startIdx, endIdx + 1);
+      const suggestions = JSON.parse(jsonStr);
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 4000,
           messages: [{ role: 'user', content: prompt }]
         })
       });
-      const data = await response.json();
-      const text = data.content[0].text;
-      const clean = text.replace(/```json|```/g, '').trim();
-      const suggestions = JSON.parse(clean);
+      
       const COLORS = ['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD','#D4537E'];
       for (let i = 0; i < suggestions.length; i++) {
         const s = suggestions[i];
