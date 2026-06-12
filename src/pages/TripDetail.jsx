@@ -15,6 +15,15 @@ export default function TripDetail({ session }) {
   const [loading, setLoading] = useState(true);
   const [newMsg, setNewMsg] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiPrefs, setAiPrefs] = useState({
+    ageGroups: [],
+    travelStyle: '',
+    interests: [],
+    budget: '',
+    transport: '',
+    restrictions: ''
+  });
   const chatRef = useRef(null);
 
   const [showEventModal, setShowEventModal] = useState(false);
@@ -54,10 +63,51 @@ export default function TripDetail({ session }) {
     setLoading(false);
   }
 
+  function toggleMulti(field, value) {
+    setAiPrefs(prev => ({
+      ...prev,
+      [field]: prev[field].includes(value)
+        ? prev[field].filter(v => v !== value)
+        : [...prev[field], value]
+    }));
+  }
+
   async function generateItinerary() {
     if (!trip) return;
+    if (!aiPrefs.travelStyle || !aiPrefs.budget || !aiPrefs.transport) {
+      alert('Please fill in Travel Style, Budget, and Transportation before generating.');
+      return;
+    }
+    setShowAiModal(false);
     setAiLoading(true);
     try {
+      const prompt = `Create a detailed day-by-day travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
+
+Group preferences:
+- Age groups: ${aiPrefs.ageGroups.length ? aiPrefs.ageGroups.join(', ') : 'Mixed adults'}
+- Travel style: ${aiPrefs.travelStyle}
+- Interests: ${aiPrefs.interests.length ? aiPrefs.interests.join(', ') : 'General sightseeing'}
+- Budget level: ${aiPrefs.budget}
+- Transportation: ${aiPrefs.transport}
+- Special requirements: ${aiPrefs.restrictions || 'None'}
+
+For each activity please consider and include in notes:
+- Realistic travel time from previous location (considering traffic)
+- Estimated ticket/entry price in USD
+- Recommended time to spend at the location
+- Age-appropriateness notes if relevant
+- Best time of day to visit to avoid crowds
+- Any booking tips or advance reservation requirements
+
+Return ONLY a JSON array, no other text, no markdown. Each item must have:
+- title (string): activity name
+- event_date (string): YYYY-MM-DD format
+- event_time (string): HH:MM format (24hr)
+- location (string): specific venue/place name with area
+- notes (string): include travel time, estimated cost, time needed, tips
+
+Generate 3-4 activities per day with realistic timing gaps for travel and meals. Only return the JSON array.`;
+
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -68,20 +118,8 @@ export default function TripDetail({ session }) {
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: `Create a day-by-day travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
-
-Return ONLY a JSON array, no other text. Each item should have:
-- title (string): activity name
-- event_date (string): date in YYYY-MM-DD format
-- event_time (string): time in HH:MM format
-- location (string): specific place name
-- notes (string): brief description
-
-Generate 2-3 activities per day. Only return the JSON array, no markdown, no explanation.`
-          }]
+          max_tokens: 2000,
+          messages: [{ role: 'user', content: prompt }]
         })
       });
       const data = await response.json();
@@ -103,7 +141,7 @@ Generate 2-3 activities per day. Only return the JSON array, no markdown, no exp
         }]);
       }
       fetchAll();
-      alert('✅ AI itinerary generated! Your plan has been updated.');
+      alert('✅ AI itinerary generated! Check your Plan tab.');
     } catch (err) {
       alert('Error generating itinerary: ' + err.message);
     }
@@ -168,6 +206,36 @@ Generate 2-3 activities per day. Only return the JSON array, no markdown, no exp
 
   const CATS = ['💰','🏨','🚕','🍽️','⛵','🏄','🎟️','🛍️'];
 
+  // Chip selector component
+  function ChipGroup({ label, options, field, multi }) {
+    return (
+      <div style={{marginBottom:'14px'}}>
+        <div style={styles.label}>{label}</div>
+        <div style={{display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'6px'}}>
+          {options.map(opt => {
+            const selected = multi
+              ? aiPrefs[field].includes(opt.value)
+              : aiPrefs[field] === opt.value;
+            return (
+              <button key={opt.value}
+                onClick={() => multi ? toggleMulti(field, opt.value) : setAiPrefs(p => ({...p, [field]: opt.value}))}
+                style={{
+                  padding:'8px 14px', borderRadius:'20px', border:'1.5px solid',
+                  borderColor: selected ? '#378ADD' : '#e2e8f0',
+                  background: selected ? '#EBF4FF' : '#fff',
+                  color: selected ? '#185FA5' : '#555',
+                  fontSize:'13px', fontWeight: selected ? '600' : '400',
+                  cursor:'pointer'
+                }}>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontSize:'32px'}}>✈️</div>;
   if (!trip) return <div style={{padding:'24px',textAlign:'center'}}>Trip not found</div>;
 
@@ -210,32 +278,26 @@ Generate 2-3 activities per day. Only return the JSON array, no markdown, no exp
               ))}
             </div>
           ))}
-          {events.length === 0 && <div style={styles.emptyState}>No events yet — add your first one or use AI to generate!</div>}
-          <button style={styles.addBtn} onClick={() => setShowEventModal(true)}>＋ Add event</button>
+          {events.length === 0 && <div style={styles.emptyState}>No events yet — add one or use AI to generate a smart itinerary!</div>}
+          <button style={styles.addBtn} onClick={() => setShowEventModal(true)}>＋ Add event manually</button>
 
-          {/* AI Itinerary Generator */}
           <div style={styles.aiCard}>
-            <div style={styles.aiLabel}>✨ AI Itinerary Generator</div>
+            <div style={styles.aiLabel}>🤖 AI Smart Itinerary Generator</div>
             <div style={styles.aiText}>
-              I can generate a full day-by-day itinerary for <strong>{trip?.destination}</strong> based on your travel dates. Activities will be added directly to your plan!
+              Tell me about your group and I'll create a personalized itinerary for <strong>{trip?.destination}</strong> — with travel times, ticket prices, and age-appropriate activities!
             </div>
             <button
-              onClick={generateItinerary}
+              onClick={() => setShowAiModal(true)}
               disabled={aiLoading}
               style={{
-                marginTop: '10px',
-                width: '100%',
-                padding: '10px',
-                background: aiLoading ? '#aaa' : '#185FA5',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '10px',
-                fontSize: '14px',
-                fontWeight: '600',
+                marginTop:'10px', width:'100%', padding:'11px',
+                background: aiLoading ? '#aaa' : 'linear-gradient(135deg,#378ADD,#185FA5)',
+                color:'#fff', border:'none', borderRadius:'10px',
+                fontSize:'14px', fontWeight:'600',
                 cursor: aiLoading ? 'not-allowed' : 'pointer'
               }}
             >
-              {aiLoading ? '🤖 Generating itinerary...' : '✨ Generate AI Itinerary'}
+              {aiLoading ? '🤖 Generating your itinerary...' : '✨ Customize & Generate Itinerary'}
             </button>
           </div>
         </div>
@@ -350,6 +412,73 @@ Generate 2-3 activities per day. Only return the JSON array, no markdown, no exp
         </div>
       )}
 
+      {/* ── AI PREFERENCES MODAL ── */}
+      {showAiModal && (
+        <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowAiModal(false)}>
+          <div style={{...styles.modal, maxHeight:'90vh', overflowY:'auto'}}>
+            <div style={styles.handle} />
+            <div style={styles.modalTitle}>🤖 Customize Your Itinerary</div>
+            <div style={{fontSize:'13px', color:'#888', marginBottom:'16px'}}>
+              Tell me about your group and I'll create a personalized plan for <strong>{trip?.destination}</strong>
+            </div>
+
+            <ChipGroup label="👥 Who's coming? (select all that apply)" field="ageGroups" multi={true} options={[
+              {label:'👶 Toddlers (0-3)', value:'toddlers'},
+              {label:'🧒 Kids (4-12)', value:'kids'},
+              {label:'🧑 Teens (13-17)', value:'teens'},
+              {label:'🧑‍💼 Adults (18-59)', value:'adults'},
+              {label:'👴 Seniors (60+)', value:'seniors'},
+            ]} />
+
+            <ChipGroup label="🎯 Travel style" field="travelStyle" multi={false} options={[
+              {label:'😌 Relaxed', value:'relaxed — fewer activities, longer breaks, no rushing'},
+              {label:'⚖️ Balanced', value:'balanced — mix of sightseeing and downtime'},
+              {label:'🚀 Packed', value:'packed — maximize every hour, see as much as possible'},
+            ]} />
+
+            <ChipGroup label="❤️ Interests (select all that apply)" field="interests" multi={true} options={[
+              {label:'🏛️ Culture & History', value:'culture and history'},
+              {label:'🍽️ Food & Dining', value:'food and local cuisine'},
+              {label:'🌿 Nature & Outdoors', value:'nature and outdoor activities'},
+              {label:'🛍️ Shopping', value:'shopping'},
+              {label:'🎭 Arts & Entertainment', value:'arts and entertainment'},
+              {label:'🏖️ Beach & Water', value:'beach and water activities'},
+              {label:'🎢 Adventure & Thrills', value:'adventure and thrill activities'},
+              {label:'📸 Photography Spots', value:'photography and scenic spots'},
+            ]} />
+
+            <ChipGroup label="💰 Budget level" field="budget" multi={false} options={[
+              {label:'💵 Budget', value:'budget-friendly, prioritize free or low-cost activities'},
+              {label:'💳 Moderate', value:'moderate budget, mix of free and paid activities'},
+              {label:'💎 Luxury', value:'luxury, spare no expense for premium experiences'},
+            ]} />
+
+            <ChipGroup label="🚗 Getting around" field="transport" multi={false} options={[
+              {label:'🚗 Own car', value:'own car — can drive between locations freely'},
+              {label:'🚌 Public transport', value:'public transport — bus, metro, train'},
+              {label:'🚕 Taxi/Uber', value:'taxi and rideshare — convenient but factor in costs'},
+              {label:'🚶 Walking', value:'mostly walking — prefer walkable areas'},
+              {label:'🔀 Mix', value:'mix of transport options'},
+            ]} />
+
+            <div style={{marginBottom:'16px'}}>
+              <div style={styles.label}>⚠️ Any special requirements or restrictions?</div>
+              <input style={{...styles.input, marginTop:'6px'}}
+                placeholder="e.g. wheelchair accessible, vegetarian food, avoid crowded places..."
+                value={aiPrefs.restrictions}
+                onChange={e => setAiPrefs(p => ({...p, restrictions: e.target.value}))} />
+            </div>
+
+            <div style={styles.btnRow}>
+              <button style={styles.cancelBtn} onClick={() => setShowAiModal(false)}>Cancel</button>
+              <button style={styles.saveBtn} onClick={generateItinerary}>
+                ✨ Generate My Itinerary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ADD EVENT MODAL ── */}
       {showEventModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowEventModal(false)}>
@@ -451,11 +580,11 @@ const styles = {
   eventDot: { width:'10px', height:'10px', borderRadius:'50%', marginTop:'4px', flexShrink:0 },
   eventTitle: { fontSize:'14px', fontWeight:'600', color:'#1a1a2e' },
   eventSub: { fontSize:'12px', color:'#888', marginTop:'2px' },
-  eventNotes: { fontSize:'12px', color:'#aaa', marginTop:'2px' },
+  eventNotes: { fontSize:'12px', color:'#aaa', marginTop:'2px', lineHeight:'1.5' },
   emptyState: { textAlign:'center', color:'#aaa', padding:'32px', fontSize:'14px' },
   addBtn: { width:'100%', padding:'12px', background:'transparent', border:'1.5px dashed #cdd5de', borderRadius:'14px', color:'#888', fontSize:'14px', cursor:'pointer', marginTop:'4px', marginBottom:'12px' },
   aiCard: { background:'#EBF4FF', borderRadius:'14px', padding:'12px 14px', borderLeft:'3px solid #378ADD', marginBottom:'16px' },
-  aiLabel: { fontSize:'11px', fontWeight:'600', color:'#185FA5', marginBottom:'4px' },
+  aiLabel: { fontSize:'12px', fontWeight:'600', color:'#185FA5', marginBottom:'4px' },
   aiText: { fontSize:'13px', color:'#334', lineHeight:'1.5' },
   expSummary: { background:'linear-gradient(135deg,#378ADD,#185FA5)', borderRadius:'16px', padding:'18px 20px', marginBottom:'16px', color:'#fff' },
   expTotal: { fontSize:'28px', fontWeight:'700' },
@@ -492,7 +621,7 @@ const styles = {
   overlay: { position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'flex-end', justifyContent:'center', zIndex:100 },
   modal: { background:'#fff', borderRadius:'24px 24px 0 0', padding:'24px', width:'100%', maxWidth:'430px', maxHeight:'85vh', overflowY:'auto' },
   handle: { width:'40px', height:'4px', background:'#e0e0e0', borderRadius:'2px', margin:'0 auto 20px' },
-  modalTitle: { fontSize:'18px', fontWeight:'700', color:'#1a1a2e', marginBottom:'16px' },
+  modalTitle: { fontSize:'18px', fontWeight:'700', color:'#1a1a2e', marginBottom:'8px' },
   label: { fontSize:'13px', fontWeight:'600', color:'#555', marginBottom:'4px' },
   input: { width:'100%', padding:'12px 14px', border:'1.5px solid #e2e8f0', borderRadius:'12px', fontSize:'14px', color:'#1a1a2e', outline:'none', boxSizing:'border-box' },
   btnRow: { display:'flex', gap:'8px', marginTop:'8px' },
