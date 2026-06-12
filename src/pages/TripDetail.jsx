@@ -110,10 +110,31 @@ Keep each notes field under 50 characters. Return exactly 6 items. No explanatio
       });
 
       const text = await response.text();
-      const start = text.indexOf('[');
-      const end = text.lastIndexOf(']');
-      if (start === -1 || end === -1) throw new Error('Invalid response from AI');
-      const suggestions = JSON.parse(text.slice(start, end + 1));
+      
+      // Smart repair - finds only complete JSON objects
+      function repairJSON(raw) {
+        const start = raw.indexOf('[');
+        if (start === -1) throw new Error('No JSON found');
+        let jsonStr = raw.slice(start);
+        let lastCompleteEnd = -1;
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let i = 0; i < jsonStr.length; i++) {
+          const ch = jsonStr[i];
+          if (escaped) { escaped = false; continue; }
+          if (ch === '\\' && inString) { escaped = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === '{') depth++;
+          if (ch === '}') { depth--; if (depth === 0) lastCompleteEnd = i; }
+        }
+        if (lastCompleteEnd === -1) throw new Error('No complete objects found');
+        const trimmed = jsonStr.slice(0, lastCompleteEnd + 1) + ']';
+        return JSON.parse(trimmed.replace(/,\s*\]/g, ']'));
+      }
+
+      const suggestions = repairJSON(text);
 
       const data = await response.json();
       const text = data.content[0].text;
