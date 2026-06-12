@@ -14,9 +14,9 @@ export default function TripDetail({ session }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newMsg, setNewMsg] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   const chatRef = useRef(null);
 
-  // Modals
   const [showEventModal, setShowEventModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -52,6 +52,62 @@ export default function TripDetail({ session }) {
     if (messagesRes.data) setMessages(messagesRes.data);
     if (membersRes.data) setMembers(membersRes.data);
     setLoading(false);
+  }
+
+  async function generateItinerary() {
+    if (!trip) return;
+    setAiLoading(true);
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: `Create a day-by-day travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
+
+Return ONLY a JSON array, no other text. Each item should have:
+- title (string): activity name
+- event_date (string): date in YYYY-MM-DD format
+- event_time (string): time in HH:MM format
+- location (string): specific place name
+- notes (string): brief description
+
+Generate 2-3 activities per day. Only return the JSON array, no markdown, no explanation.`
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content[0].text;
+      const clean = text.replace(/```json|```/g, '').trim();
+      const suggestions = JSON.parse(clean);
+      const COLORS = ['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD','#D4537E'];
+      for (let i = 0; i < suggestions.length; i++) {
+        const s = suggestions[i];
+        await supabase.from('events').insert([{
+          trip_id: id,
+          title: s.title,
+          event_date: s.event_date,
+          event_time: s.event_time,
+          location: s.location,
+          notes: s.notes,
+          color: COLORS[i % COLORS.length],
+          added_by: user.id
+        }]);
+      }
+      fetchAll();
+      alert('✅ AI itinerary generated! Your plan has been updated.');
+    } catch (err) {
+      alert('Error generating itinerary: ' + err.message);
+    }
+    setAiLoading(false);
   }
 
   async function addEvent() {
@@ -102,9 +158,7 @@ export default function TripDetail({ session }) {
   const totalExp = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
   const perPerson = acceptedMembers.length ? Math.round(totalExp / acceptedMembers.length) : 0;
   const fmt = n => '$' + Number(n).toLocaleString('en-US');
-  
 
-  // Group events by date
   const eventsByDate = events.reduce((acc, e) => {
     const d = e.event_date || 'TBD';
     if (!acc[d]) acc[d] = [];
@@ -119,14 +173,12 @@ export default function TripDetail({ session }) {
 
   return (
     <div style={styles.container}>
-      {/* Top bar */}
       <div style={styles.topBar}>
         <button style={styles.backBtn} onClick={() => navigate('/dashboard')}>←</button>
         <div style={styles.topTitle}>{trip.name} {trip.emoji}</div>
         <button style={styles.inviteBtn} onClick={() => { navigator.clipboard?.writeText(window.location.href); alert('Link copied!'); }}>🔗</button>
       </div>
 
-      {/* Tab bar */}
       <div style={styles.tabBar}>
         {['plan','expenses','chat','members'].map(tab => (
           <button key={tab} style={{...styles.tabBtn, ...(activeTab===tab ? styles.tabActive : {})}}
@@ -142,7 +194,9 @@ export default function TripDetail({ session }) {
         <div style={styles.content}>
           {Object.keys(eventsByDate).sort().map(date => (
             <div key={date} style={{marginBottom:'16px'}}>
-              <div style={styles.dayLabel}>{date !== 'TBD' ? new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : 'TBD'}</div>
+              <div style={styles.dayLabel}>
+                {date !== 'TBD' ? new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : 'TBD'}
+              </div>
               {eventsByDate[date].map(ev => (
                 <div key={ev.id} style={styles.eventCard}>
                   <div style={styles.eventTime}>{ev.event_time?.slice(0,5) || '--'}</div>
@@ -156,11 +210,33 @@ export default function TripDetail({ session }) {
               ))}
             </div>
           ))}
-          {events.length === 0 && <div style={styles.emptyState}>No events yet — add your first one!</div>}
+          {events.length === 0 && <div style={styles.emptyState}>No events yet — add your first one or use AI to generate!</div>}
           <button style={styles.addBtn} onClick={() => setShowEventModal(true)}>＋ Add event</button>
+
+          {/* AI Itinerary Generator */}
           <div style={styles.aiCard}>
-            <div style={styles.aiLabel}>✨ AI suggestion</div>
-            <div style={styles.aiText}>Based on your destination, I can suggest a full day-by-day itinerary. Want me to generate one?</div>
+            <div style={styles.aiLabel}>✨ AI Itinerary Generator</div>
+            <div style={styles.aiText}>
+              I can generate a full day-by-day itinerary for <strong>{trip?.destination}</strong> based on your travel dates. Activities will be added directly to your plan!
+            </div>
+            <button
+              onClick={generateItinerary}
+              disabled={aiLoading}
+              style={{
+                marginTop: '10px',
+                width: '100%',
+                padding: '10px',
+                background: aiLoading ? '#aaa' : '#185FA5',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '10px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: aiLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {aiLoading ? '🤖 Generating itinerary...' : '✨ Generate AI Itinerary'}
+            </button>
           </div>
         </div>
       )}
@@ -232,7 +308,6 @@ export default function TripDetail({ session }) {
               </div>
             ))}
           </div>
-
           {['accepted','pending','declined'].map(status => {
             const group = members.filter(m => m.status === status);
             if (!group.length) return null;
@@ -351,7 +426,7 @@ export default function TripDetail({ session }) {
             </div>
             <div style={styles.btnRow}>
               <button style={styles.cancelBtn} onClick={() => setShowMemberModal(false)}>Cancel</button>
-              <button style={styles.saveBtn} onClick={() => { alert('Invite link copied! Share it with ' + newMemberName); setShowMemberModal(false); }}>Copy invite link</button>
+              <button style={styles.saveBtn} onClick={() => { alert('Share this link: ' + window.location.href); setShowMemberModal(false); }}>Copy invite link</button>
             </div>
           </div>
         </div>
@@ -379,9 +454,9 @@ const styles = {
   eventNotes: { fontSize:'12px', color:'#aaa', marginTop:'2px' },
   emptyState: { textAlign:'center', color:'#aaa', padding:'32px', fontSize:'14px' },
   addBtn: { width:'100%', padding:'12px', background:'transparent', border:'1.5px dashed #cdd5de', borderRadius:'14px', color:'#888', fontSize:'14px', cursor:'pointer', marginTop:'4px', marginBottom:'12px' },
-  aiCard: { background:'#EBF4FF', borderRadius:'14px', padding:'12px 14px', borderLeft:'3px solid #378ADD' },
+  aiCard: { background:'#EBF4FF', borderRadius:'14px', padding:'12px 14px', borderLeft:'3px solid #378ADD', marginBottom:'16px' },
   aiLabel: { fontSize:'11px', fontWeight:'600', color:'#185FA5', marginBottom:'4px' },
-  aiText: { fontSize:'13px', color:'#334' },
+  aiText: { fontSize:'13px', color:'#334', lineHeight:'1.5' },
   expSummary: { background:'linear-gradient(135deg,#378ADD,#185FA5)', borderRadius:'16px', padding:'18px 20px', marginBottom:'16px', color:'#fff' },
   expTotal: { fontSize:'28px', fontWeight:'700' },
   expSub: { fontSize:'13px', opacity:.85, marginTop:'2px' },
