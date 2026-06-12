@@ -81,25 +81,16 @@ export default function TripDetail({ session }) {
     setShowAiModal(false);
     setAiLoading(true);
     try {
-      const prompt = `Create a travel itinerary for a group trip to ${trip.destination} from ${trip.start_date} to ${trip.end_date}.
-
+      const prompt = `List 6 activities for a trip to ${trip.destination}.
 Group: ${aiPrefs.ageGroups.join(', ') || 'adults'}
 Style: ${aiPrefs.travelStyle}
-Interests: ${aiPrefs.interests.join(', ') || 'general sightseeing'}
 Budget: ${aiPrefs.budget}
 Transport: ${aiPrefs.transport}
-Requirements: ${aiPrefs.restrictions || 'none'}
 
-Rules:
-- Maximum 2 activities per day
-- Keep notes under 80 characters
-- Return ONLY a JSON array, no other text
+IMPORTANT: Return ONLY this exact JSON format, nothing else:
+[{"title":"Activity Name","event_date":"${trip.start_date}","event_time":"09:00","location":"Place Name","notes":"Cost $X | Xhrs"}]
 
-Each object must have exactly:
-{"title":"string","event_date":"YYYY-MM-DD","event_time":"HH:MM","location":"string","notes":"string"}
-
-Example:
-[{"title":"Visit Museum","event_date":"2024-12-20","event_time":"10:00","location":"City Museum, Downtown","notes":"Cost $15 | 2hrs | Book online"}]`;
+Keep each notes field under 50 characters. Return exactly 6 items. No explanation.`;
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -111,7 +102,7 @@ Example:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 3000,
+          max_tokens: 1500,
           messages: [{ role: 'user', content: prompt }]
         })
       });
