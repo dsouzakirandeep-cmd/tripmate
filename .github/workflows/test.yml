@@ -1,0 +1,155 @@
+name: TripMate — Automated Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run full regression every day at 8am PST
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub UI
+    inputs:
+      test_suite:
+        description: 'Which tests to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - regression
+          - frontend
+          - backend
+          - ai
+
+jobs:
+  # ── Smoke Tests (runs on every push — fast) ──────────────────────────────
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: tests
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Run Smoke Tests
+        working-directory: tests
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          HEADLESS: true
+        run: |
+          pytest -m smoke --html=reports/smoke_report.html --self-contained-html -v
+
+      - name: Upload Smoke Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-report
+          path: tests/reports/
+          retention-days: 7
+
+  # ── Full Regression (runs daily + manual trigger) ─────────────────────────
+  regression-tests:
+    name: Full Regression Suite
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+      fail-fast: false  # Run all browsers even if one fails
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: tests
+        run: |
+          pip install -r requirements.txt
+          playwright install ${{ matrix.browser }}
+          playwright install-deps ${{ matrix.browser }}
+
+      - name: Run Frontend Tests — ${{ matrix.browser }}
+        working-directory: tests
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          HEADLESS: true
+        run: |
+          pytest tests/frontend/ \
+            --browser ${{ matrix.browser }} \
+            --html=reports/frontend_${{ matrix.browser }}_report.html \
+            --self-contained-html \
+            -v
+
+      - name: Run Backend API Tests
+        working-directory: tests
+        if: matrix.browser == 'chromium'  # Run API tests once only
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          pytest tests/backend/ \
+            --html=reports/backend_api_report.html \
+            --self-contained-html \
+            -v
+
+      - name: Upload Test Reports — ${{ matrix.browser }}
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.browser }}
+          path: tests/reports/
+          retention-days: 30
+
+      - name: Upload Screenshots on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failure-screenshots-${{ matrix.browser }}
+          path: tests/reports/screenshots/
+          retention-days: 7
+
+  # ── Notify on Failure ─────────────────────────────────────────────────────
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [smoke-tests]
+    if: failure()
+
+    steps:
+      - name: Notify test failure
+        run: |
+          echo "Tests failed — check GitHub Actions for details"
+          echo "Branch: ${{ github.ref }}"
+          echo "Commit: ${{ github.sha }}"
