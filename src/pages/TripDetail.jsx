@@ -132,22 +132,20 @@ Keep each notes field under 50 characters. Return exactly 6 items. No explanatio
         if (lastCompleteEnd === -1) throw new Error('No complete objects found');
         const trimmed = jsonStr.slice(0, lastCompleteEnd + 1) + ']';
         return JSON.parse(trimmed.replace(/,\s*\]/g, ']'));
-      }
-
-      const suggestions = repairJSON(text);
-
       const data = await response.json();
-      const text = data.content[0].text;
-      const start = text.indexOf('[');
-      const end = text.lastIndexOf(']');
+      const aiText = data.content[0].text;
+      const start = aiText.indexOf('[');
+      const end = aiText.lastIndexOf(']');
       if (start === -1 || end === -1) throw new Error('Invalid response from AI');
-      const jsonStr = text.slice(start, end + 1);
+      const jsonStr = aiText.slice(start, end + 1);
       const cleaned = jsonStr
         .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
         .replace(/,\s*]/g, ']')
         .replace(/,\s*}/g, '}');
       const suggestions = JSON.parse(cleaned);
       const COLORS = ['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD','#D4537E'];
+      for (let i = 0; i < suggestions.length; i++) {
+        const s = suggestions[i];
       for (let i = 0; i < suggestions.length; i++) {
         const s = suggestions[i];
         await supabase.from('events').insert([{
