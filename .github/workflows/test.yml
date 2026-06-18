@@ -2,9 +2,9 @@ name: TripMate — Automated Test Suite
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, develop]
   pull_request:
-    branches: [main]
+    branches: [master]
   schedule:
     # Run full regression every day at 8am PST
     - cron: '0 16 * * *'
