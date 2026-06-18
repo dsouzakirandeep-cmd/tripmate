@@ -13,21 +13,23 @@
 
 # misc
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 
+# environment files — never commit secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# deploy / tooling
 .vercel
-reports/ 
-.pytest_cache/ 
-__pycache__/ 
-*.pyc 
-reports/ 
-.pytest_cache/ 
-__pycache__/ 
-*.pyc 
+
+# python / test artifacts
+reports/
+.pytest_cache/
+__pycache__/
+*.pyc
