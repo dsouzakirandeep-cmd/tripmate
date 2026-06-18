@@ -37,16 +37,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
-        working-directory: tests
         run: |
           pip install -r test-requirements.txt
           playwright install chromium
 
       - name: Run Smoke Tests
-        working-directory: tests
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -63,7 +61,7 @@ jobs:
         if: always()
         with:
           name: smoke-test-report
-          path: tests/reports/
+          path: reports/
           retention-days: 7
 
   # ── Full Regression (runs daily + manual trigger) ─────────────────────────
@@ -75,7 +73,7 @@ jobs:
     strategy:
       matrix:
         browser: [chromium, firefox, webkit]
-      fail-fast: false  # Run all browsers even if one fails
+      fail-fast: false
 
     steps:
       - name: Checkout code
@@ -84,17 +82,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
-        working-directory: tests
         run: |
           pip install -r test-requirements.txt
           playwright install ${{ matrix.browser }}
           playwright install-deps ${{ matrix.browser }}
 
       - name: Run Frontend Tests — ${{ matrix.browser }}
-        working-directory: tests
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -110,8 +106,7 @@ jobs:
             -v
 
       - name: Run Backend API Tests
-        working-directory: tests
-        if: matrix.browser == 'chromium'  # Run API tests once only
+        if: matrix.browser == 'chromium'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -129,7 +124,7 @@ jobs:
         if: always()
         with:
           name: test-reports-${{ matrix.browser }}
-          path: tests/reports/
+          path: reports/
           retention-days: 30
 
       - name: Upload Screenshots on Failure
@@ -137,7 +132,7 @@ jobs:
         if: failure()
         with:
           name: failure-screenshots-${{ matrix.browser }}
-          path: tests/reports/screenshots/
+          path: reports/screenshots/
           retention-days: 7
 
   # ── Notify on Failure ─────────────────────────────────────────────────────
