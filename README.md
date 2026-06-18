@@ -190,3 +190,4 @@ API_BASE_URL
 ---
 
 *TripMate Test Framework — built to demonstrate real-world QA automation at scale*
+<!-- Updated June 17 2026 -->
