@@ -1,6 +1,10 @@
-[build] 
-  command = "npm run build" 
-  publish = "build" 
- 
-[functions] 
-  directory = "netlify" 
+[build]
+command = "npm run build"
+publish = "build"
+ignore = ""
+
+[functions]
+directory = "netlify"
+
+[build.environment]
+PIP_REQUIREMENTS = ""
