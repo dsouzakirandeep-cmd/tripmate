@@ -114,8 +114,7 @@ class TestTripAPI:
             "destination": "Paris, France",
             "start_date": "2025-08-01",
             "end_date": "2025-08-07",
-            "emoji": "✈️",
-            "color": "#378ADD"
+            "emoji": "✈️"    
         }
         response = requests.post(
             url,

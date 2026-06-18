@@ -45,7 +45,7 @@ class TestTripCreation:
         page.wait_for_timeout(3000)
 
         # Verify trip visible
-        assert page.locator("text=Paris").is_visible(timeout=10000) or \
+        assert page.locator("text=Paris").first.is_visible(timeout=10000) or \
                page.locator(f"text={trip_name}").is_visible(timeout=5000), \
                "Created trip not visible"
 
