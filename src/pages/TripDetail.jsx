@@ -81,17 +81,6 @@ export default function TripDetail({ session }) {
     setShowAiModal(false);
     setAiLoading(true);
     try {
-      const prompt = `List 6 activities for a trip to ${trip.destination}.
-Group: ${aiPrefs.ageGroups.join(', ') || 'adults'}
-Style: ${aiPrefs.travelStyle}
-Budget: ${aiPrefs.budget}
-Transport: ${aiPrefs.transport}
-
-IMPORTANT: Return ONLY this exact JSON format, nothing else:
-[{"title":"Activity Name","event_date":"${trip.start_date}","event_time":"09:00","location":"Place Name","notes":"Cost $X | Xhrs"}]
-
-Keep each notes field under 50 characters. Return exactly 6 items. No explanation.`;
-
       const response = await fetch('/.netlify/functions/generate-itinerary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,9 +98,6 @@ Keep each notes field under 50 characters. Return exactly 6 items. No explanatio
         })
       });
 
-      const text = await response.text();
-      
-      // Smart repair - finds only complete JSON objects
       function repairJSON(raw) {
         const start = raw.indexOf('[');
         if (start === -1) throw new Error('No JSON found');
@@ -408,7 +394,6 @@ Keep each notes field under 50 characters. Return exactly 6 items. No explanatio
         </div>
       )}
 
-      {/* AI PREFERENCES MODAL */}
       {showAiModal && (
         <div style={styles.overlay} onClick={e => e.target===e.currentTarget && setShowAiModal(false)}>
           <div style={{...styles.modal, maxHeight:'90vh', overflowY:'auto'}}>
